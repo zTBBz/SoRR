@@ -4,38 +4,68 @@ using JetBrains.Annotations;
 
 namespace SoRR
 {
+    /// <summary>
+    ///   <para>Represents an asset manager, that loads assets from a specified directory.</para>
+    /// </summary>
     public sealed class FileSystemAssetManager : ExternalAssetManagerBase
     {
+        /// <summary>
+        ///   <para>Gets the full path to the directory that the asset manager loads assets from.</para>
+        /// </summary>
         public string DirectoryPath { get; }
-        public override string DisplayName => DirectoryPath;
+        /// <inheritdoc/>
+        public override string DisplayName => $"\"{DirectoryPath}{Path.DirectorySeparatorChar}\"";
 
+        /// <summary>
+        ///   <para>Initializes a new instance of the <see cref="FileSystemAssetManager"/> class with the specified <paramref name="directoryPath"/>.</para>
+        /// </summary>
+        /// <param name="directoryPath">A path to the directory to load assets from.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="directoryPath"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="directoryPath"/> is not a valid directory path.</exception>
+        /// <exception cref="NotSupportedException"><paramref name="directoryPath"/> contains a colon (":") that is not part of a volume identifier (for example, "c:\").</exception>
+        /// <exception cref="PathTooLongException">The specified path, file name, or both exceed the system-defined maximum length.</exception>
         public FileSystemAssetManager(string directoryPath)
         {
             if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
             DirectoryPath = Path.GetFullPath(directoryPath);
 
-            // TODO: set up a FileSystemWatcher monitoring the directory's contents
+            // TODO: reimplement the directory watcher
         }
 
-        protected override IAssetLoadInfo? GetAssetInfo(string path)
+        /// <inheritdoc/>
+        protected override IExternalAssetInfo? GetAssetInfo(string assetPath)
         {
-            // TODO: find the files matching the specified path
+            string? mainPath = null;
+            string? metadataPath = null;
 
-            // TODO: determine which one is the main asset, and which one is the metadata
+            foreach (string filePath in FileUtility.SearchFiles(DirectoryPath, assetPath))
+            {
+                ReadOnlySpan<char> extension = Path.GetExtension(filePath.AsSpan());
 
-            // TODO: if the main asset could not be found, return null
+                if (extension is ".meta")
+                    metadataPath = filePath;
+                else
+                {
+                    if (mainPath is null)
+                        mainPath = filePath;
+                    else
+                    {
+                        // TODO: log a warning, if there's more than one asset path
+                    }
+                }
+            }
 
-            throw new NotImplementedException();
+            if (mainPath is null) return null;
+            return new AssetInfo(mainPath, metadataPath);
         }
 
-        public readonly record struct AssetInfo(string AssetPath, string? MetadataPath) : IAssetLoadInfo
+        private readonly struct AssetInfo(string assetPath, string? metadataPath) : IExternalAssetInfo
         {
-            // Note: when exposing a MemoryStream with byte[], make sure to make it exposable/publiclyVisible
-            public AssetFormat Format => AssetUtility.DetectFormat(AssetPath);
+            public AssetFormat Format => AssetUtility.DetectFormat(assetPath);
             [MustDisposeResource]
-            public Stream OpenAsset() => File.OpenRead(AssetPath);
+            public Stream OpenAsset() => File.OpenRead(assetPath);
             [MustDisposeResource]
-            public Stream? OpenMetadata() => MetadataPath is null ? null : File.OpenRead(MetadataPath);
+            public Stream? OpenMetadata() => metadataPath is null ? null : File.OpenRead(metadataPath);
         }
 
     }
